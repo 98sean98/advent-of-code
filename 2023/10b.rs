@@ -3,9 +3,9 @@ use std::collections::HashMap;
 
 
 fn main() {
-	let lines = read_lines("10c.txt");
+	let lines = read_lines("10.txt");
 
-	let pipes: Vec<Vec<char>> = lines.iter().map(|l| l.chars().collect()).collect();
+	let mut pipes: Vec<Vec<char>> = lines.iter().map(|l| l.chars().collect()).collect();
 
 	let mut start: (usize, usize) = (0, 0);
 
@@ -62,6 +62,8 @@ fn main() {
 		}
 	}
 
+	println!("first: ({}, {}) {}", current.0.0, current.0.1, pipes[current.0.0][current.0.1]);
+
 	let mut s: u32 = 0;
 
 	let mut main: Vec<Vec<usize>> = vec![vec![]; pipes.len()];
@@ -83,28 +85,31 @@ fn main() {
 		};
 
 		let pipe = pipes[pos.0][pos.1];
-		current = (pos, pipe, from);
 
+		if pipe == 'S' {
+			println!("last: ({}, {}) {}", current.0.0, current.0.1, pipes[current.0.0][current.0.1]);
+		}
+
+		current = (pos, pipe, from);
 		main[pos.0].push(pos.1);
 		
 	}
 
+	pipes[start.0][start.1] = 'J';
+
 	main.iter_mut().for_each(|v| v.sort());
-
-	for (i, p) in main.iter().enumerate() {
-		print!("{}: ", i);
-		for j in p.iter() { print!("{} ", j) }
-		println!("");
-	}
-
 
 	for (i, row) in pipes.iter().enumerate() {
 		let mut count = 0;
-		for (j, p) in row.iter().enumerate() {
+		let mut last: char = '.';
+		for (j, &p) in row.iter().enumerate() {
 			if main[i].iter().any(|&x| x == j) {
-			count += 1;
+				if (last == 'L' && p == '7') || (last == 'F' && p == 'J') || p == '|' {
+					count += 1;
+				}
+				if p != '-' { last = p; }
 			} else if count % 2 == 1 && j < *main[i].last().unwrap() {
-				println!("({}, {})", i, j);
+				// println!("({}, {})", i, j);
 				s += 1
 			}
 		}
