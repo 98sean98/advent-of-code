@@ -2,9 +2,10 @@ use std::fs;
 use std::collections::HashMap;
 
 fn main() {
-	let lines = read_lines("12a.txt");
+	let lines = read_lines("12.txt");
 
 	let mut s = 0;
+	let mut memory: Memory = HashMap::new();
 
 	for line in lines.iter() {
 		let l: Vec<char> = line.chars().collect();
@@ -30,33 +31,34 @@ fn main() {
 		}
 
 
-		let mut memory: Memory = HashMap::new();
-		s += count(&mut memory, &mut record, &mut groups);
+		s += count(&mut memory, &mut record, &mut groups, false);
 		
-		println!("------------");
+		// println!("------------");
 	}
 
 
 	println!("s: {}", s);
 }
 
-type Memory = HashMap<(Vec<char>, Vec<u32>), u32>;
+type Memory = HashMap<(Vec<char>, Vec<u32>, bool), u32>;
 
-fn count(memory: &mut Memory, record: &mut Vec<char>, groups: &mut Vec<u32>) -> u32 {
-	if let Some(v) = memory.get(&(record.clone(), groups.clone())) {
+fn count(memory: &mut Memory, record: &mut Vec<char>, groups: &mut Vec<u32>, ed: bool) -> u32 {
+	if let Some(v) = memory.get(&(record.clone(), groups.clone(), ed)) {
 		return *v;
 	}
 
 	let ans: u32 = match (record.last(), groups.last()) {
 	(Some(&r), Some(&g)) => 
 		if r == '.' {
+			if ed { 0 } else {
 			record.pop();
 			let g_index = groups.len() - 1;
 			if g == 0 { groups.pop(); };
-			let d = count(memory, record, groups);
+			let d = count(memory, record, groups, false);
 			if g == 0 { groups.push(g); }
 			record.push(r);
 			d
+			}
 		} else if r == '#' {
 			if g == 0 {
 				0
@@ -64,7 +66,7 @@ fn count(memory: &mut Memory, record: &mut Vec<char>, groups: &mut Vec<u32>) -> 
 				record.pop();
 				let g_index = groups.len() - 1;
 				groups[g_index] = g - 1;
-				let h = count(memory, record, groups);
+				let h = count(memory, record, groups, g-1 > 0);
 				record.push(r); 
 				groups[g_index] = g;
 				h
@@ -73,13 +75,13 @@ fn count(memory: &mut Memory, record: &mut Vec<char>, groups: &mut Vec<u32>) -> 
 			record.pop();
 			let g_index = groups.len() - 1;
 			if g == 0 { groups.pop(); };
-			let d = count(memory, record, groups);
+			let d = if ed { 0 } else { count(memory, record, groups, false) };
 			if g == 0 { groups.push(g); }
 			let h = {
 				if g == 0 { 0 }
 				else {
 				groups[g_index] = g - 1;
-				let h = count(memory, record, groups);
+				let h = count(memory, record, groups, g-1 > 0);
 				groups[g_index] = g;
 				h
 				}
@@ -93,10 +95,10 @@ fn count(memory: &mut Memory, record: &mut Vec<char>, groups: &mut Vec<u32>) -> 
 	(None, None) => 1
 	};
 
-	pr(&record, &groups);
-	println!("ans: {}", ans);
+	// pr(&record, &groups);
+	// println!("ans: {}", ans);
 
-	memory.insert((record.clone(), groups.clone()), ans);
+	memory.insert((record.clone(), groups.clone(), ed), ans);
 	ans
 
 }
