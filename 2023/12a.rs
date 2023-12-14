@@ -1,16 +1,17 @@
 use std::fs;
+use std::collections::HashMap;
 
 fn main() {
 	let lines = read_lines("12.txt");
 
 	let mut s = 0;
+	let mut memory: Memory = HashMap::new();
 
 	for line in lines.iter() {
 		let l: Vec<char> = line.chars().collect();
 
-		let mut row: Vec<char> = vec![];
+		let mut record: Vec<char> = vec![];
 		let mut groups: Vec<u32> = vec![];
-		let mut unknowns: Vec<usize> = vec![];
 		let mut space = false;
 
 		let mut num = 0;
@@ -19,8 +20,7 @@ fn main() {
 			if *c == ' ' {
 				space = true;
 			} else if !space {
-				row.push(*c);
-				if *c == '?' { unknowns.push(j); }
+				record.push(*c);
 			} else if c.is_digit(10) {
 				num = num * 10 + c.to_digit(10).unwrap();
 			}
@@ -30,65 +30,86 @@ fn main() {
 			}
 		}
 
-		/*
-		prow(&row);
-		print!("groups: ");
-		for g in groups.iter() { print!("{} ", g); }
-		println!("");
-		*/
 
-		s += count(&mut row, &mut unknowns, &groups);
+		s += count(&mut memory, &mut record, &mut groups, false);
 		
+		// println!("------------");
 	}
+
 
 	println!("s: {}", s);
 }
 
-fn count(row: &mut Vec<char>, unknowns: &mut Vec<usize>, groups: &Vec<u32>) -> u32 {
+type Memory = HashMap<(Vec<char>, Vec<u32>, bool), u32>;
 
-	let mut s = 0;
-
-	if let Some(last) = unknowns.pop() {
-		row[last] = '.';
-
-		s += count(row, unknowns, groups);
-
-		row[last] = '#';
-		
-		s += count(row, unknowns, groups);
-
-		unknowns.push(last);
-	} else {
-
-		let mut current: u32 = 0;
-		let mut candidate: Vec<u32> = vec![];
-		
-		for (j, c) in row.iter().enumerate() {
-			if *c == '#' { current += 1; }
-			if current > 0 && (*c == '.' || j == row.len() - 1) {
-				candidate.push(current);
-				current = 0;
-			}
-		}
-
-		// print!("candidate:");
-		// for c in candidate.iter() { print!(" {}", c); }
-		// println!("");
-
-		if candidate.eq(groups) {
-			// prow(row);
-			return 1;
-		} else {
-			return 0;
-		}
+fn count(memory: &mut Memory, record: &mut Vec<char>, groups: &mut Vec<u32>, ed: bool) -> u32 {
+	if let Some(v) = memory.get(&(record.clone(), groups.clone(), ed)) {
+		return *v;
 	}
 
-	s
+	let ans: u32 = match (record.last(), groups.last()) {
+	(Some(&r), Some(&g)) => 
+		if r == '.' {
+			if ed { 0 } else {
+			record.pop();
+			let g_index = groups.len() - 1;
+			if g == 0 { groups.pop(); };
+			let d = count(memory, record, groups, false);
+			if g == 0 { groups.push(g); }
+			record.push(r);
+			d
+			}
+		} else if r == '#' {
+			if g == 0 {
+				0
+			} else {
+				record.pop();
+				let g_index = groups.len() - 1;
+				groups[g_index] = g - 1;
+				let h = count(memory, record, groups, g-1 > 0);
+				record.push(r); 
+				groups[g_index] = g;
+				h
+			}
+		} else {
+			record.pop();
+			let g_index = groups.len() - 1;
+			if g == 0 { groups.pop(); };
+			let d = if ed { 0 } else { count(memory, record, groups, false) };
+			if g == 0 { groups.push(g); }
+			let h = {
+				if g == 0 { 0 }
+				else {
+				groups[g_index] = g - 1;
+				let h = count(memory, record, groups, g-1 > 0);
+				groups[g_index] = g;
+				h
+				}
+			};
+			record.push(r); 
+			d + h
+		}
+	,
+	(Some(_), None) => if record.iter().all(|&r| r != '#') { 1 } else { 0 },
+	(None, Some(&g)) => if groups.len() == 1 && g == 0 { 1 } else { 0 },
+	(None, None) => 1
+	};
+
+	// pr(&record, &groups);
+	// println!("ans: {}", ans);
+
+	memory.insert((record.clone(), groups.clone(), ed), ans);
+	ans
+
 }
 
-fn prow(row: &Vec<char>) {
-	for c in row.iter() {
-		print!("{} ", c);
+fn pr(record: &Vec<char>, groups: &Vec<u32>) {
+	for c in record.iter() {
+		print!("{}", c);
+	}
+	print!("  ");
+	for g in groups.iter() {
+		print!("{},", g);
 	}
 	println!("");
 }
