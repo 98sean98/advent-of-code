@@ -1,5 +1,6 @@
 use std::fs;
 use std::collections::HashMap;
+use std::iter::zip;
 
 fn main() {
 	let lines = read_lines("19.txt");
@@ -20,9 +21,13 @@ fn main() {
 	println!("w: {}", workflows.len());
 
 
+	let mut nodes: Vec<Node> = vec![];
+
 	
 
-	let mut s = 0;
+
+	let s = nodes.iter().fold(0, |r, n| r + n.count());
+
 	println!("s: {}", s);
 
 }
@@ -58,18 +63,30 @@ fn new_workflow(l: String) -> (String, Workflow) {
 	(s[0].clone(), w)
 }
 
+#[derive(Debug)]
 struct Interval {
 	min: u32,
 	max: u32
 }
 
 impl Interval {
-	fn from_cond(c: &Condition) -> Self {
+	fn from(c: &Condition) -> Self {
 		let (min, max) = match c.op {
 			'>' => (c.val + 1, MAX),
 			_ => (MIN, c.val - 1),
 		};
 		Self { min: min, max: max }
+	}
+	fn merge(&self, other: &Interval) -> Self {
+		let (a, b) = (self.min, self.max);
+		let (c, d) = (other.min, other.max);
+		let (a, b, c, d) = if a <= c { (a, b, c, d) } else { (c, d, a, b) };
+
+		if c <= b {
+			Interval { min: c, max: b }
+		} else {
+			Interval { min: 0, max: 0 }
+		}
 	}
 }
 
@@ -86,9 +103,35 @@ impl Category {
 			_   => panic!("unsupported category")
 		}
 	}
+	fn list() -> Vec<Self> {
+		vec![Category::X, Category::M, Category::A, Category::S]
+	}
 }
 
-type Part = HashMap<Category, u32>;
+#[derive(Debug)]
+struct Node {
+	intervals: HashMap<Category, Interval>
+}
+
+impl Node {
+	fn from(w: &Workflow) -> Self {
+		let mut h = HashMap::with_capacity(4);
+		for c in category.list().into_iter() {
+			h.insert(c, Interval { min: 1, max: 4000 });
+		}
+		for r in w.rules.iter() {
+			if let Some(cond) = r.cond {
+				let i = Interval::from(cond);
+				// todo
+			}
+		}
+	}
+	fn count(&self) -> u64 {
+		self.intervals
+			.values()
+			.fold(1, |r, a| r * if a.min > 0 { (a.max - a.min) as u64 + 1 } else { 0 })
+	}
+}
 
 type Workflows = HashMap<String, Workflow>;
 
@@ -112,14 +155,6 @@ struct Condition {
 }
 
 impl Condition {
-	fn test(&self, p: &Part) -> bool {
-		let t = *p.get(&self.cat).unwrap();
-		let v = self.val;
-		match self.op {
-			'>' => t > v,
-			_   => t < v
-		}
-	}
 	fn opposite(&self) -> Self {
 		let (op, val) = match self.op {
 			'>' => ('<', self.val + 1),
