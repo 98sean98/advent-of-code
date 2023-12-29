@@ -1,19 +1,17 @@
 use std::fs;
 use std::collections::HashMap;
-use std::iter::zip;
 
 fn main() {
 	let lines = read_lines("19.txt");
 
 	let mut workflows: Workflows = HashMap::new();
 
-	let mut start = false;
-
 	for l in lines.into_iter() {
 
 		if l.len() == 0 { break; }
 
 		let (name, w) = new_workflow(l);
+		// println!("[{}] {:?}", name, w);
 		workflows.insert(name, w);
 
 	}
@@ -21,12 +19,21 @@ fn main() {
 	println!("w: {}", workflows.len());
 
 
-	let mut nodes: Vec<Node> = vec![];
+	let mut accepted: Vec<Node> = vec![];
 
-	
+	for (name, w) in workflows.iter() {
+		// println!("[{}]", name);
+		for n in w.nodes.iter() {
+			if n.dest == String::from("A") {
+				let a = check(&workflows, name.clone(), n);
+				accepted.push(a);
+			}
+		}
+		// println!("----------------");
+	}
 
 
-	let s = nodes.iter().fold(0, |r, n| r + n.count());
+	let s = accepted.iter().fold(0, |r, n| r + n.count());
 
 	println!("s: {}", s);
 
@@ -58,18 +65,48 @@ fn new_workflow(l: String) -> (String, Workflow) {
 		)
 		.collect();
 	
-	let w = Workflow { rules: rules };
+	let nodes = Node::from(&rules);
+
+	let w = Workflow { nodes: nodes };
 
 	(s[0].clone(), w)
 }
 
-#[derive(Debug)]
+fn check(workflows: &Workflows, name: String, n: &Node) -> Node {
+	let mut n = n.clone();
+
+	let p = workflows.get(&name).unwrap();
+	let a = &p.nodes[n.index];
+	n.merge(&a);
+	// println!("child: {:?}", n);
+
+	if name != String::from("in") {
+		let mut gp_name = String::new();
+		for (gp, w) in workflows.iter() {
+			if let Some(p) = w.nodes.iter().find(|c| c.dest == name) {
+			n.index = p.index;
+			gp_name = gp.clone();
+			break;
+			}
+		}
+		n.dest = name.clone();
+		// println!("gp: {}, parent: {:?}", gp_name, n);
+		n = check(workflows, gp_name, &n);
+	}
+
+	n
+}
+
+#[derive(Debug, Clone, Copy)]
 struct Interval {
 	min: u32,
 	max: u32
 }
 
 impl Interval {
+	fn default() -> Self {
+		Self { min: MIN, max: MAX }
+	}
 	fn from(c: &Condition) -> Self {
 		let (min, max) = match c.op {
 			'>' => (c.val + 1, MAX),
@@ -80,12 +117,12 @@ impl Interval {
 	fn merge(&self, other: &Interval) -> Self {
 		let (a, b) = (self.min, self.max);
 		let (c, d) = (other.min, other.max);
-		let (a, b, c, d) = if a <= c { (a, b, c, d) } else { (c, d, a, b) };
+		let (_a, b, c, d) = if a <= c { (a, b, c, d) } else { (c, d, a, b) };
 
 		if c <= b {
-			Interval { min: c, max: b }
+			Self { min: c, max: if d <= b { d } else { b } }
 		} else {
-			Interval { min: 0, max: 0 }
+			Self { min: 0, max: 0 }
 		}
 	}
 }
@@ -103,27 +140,44 @@ impl Category {
 			_   => panic!("unsupported category")
 		}
 	}
-	fn list() -> Vec<Self> {
-		vec![Category::X, Category::M, Category::A, Category::S]
-	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Node {
-	intervals: HashMap<Category, Interval>
+	intervals: HashMap<Category, Interval>,
+	dest: String,
+	index: usize
 }
 
 impl Node {
-	fn from(w: &Workflow) -> Self {
-		let mut h = HashMap::with_capacity(4);
-		for c in category.list().into_iter() {
-			h.insert(c, Interval { min: 1, max: 4000 });
-		}
-		for r in w.rules.iter() {
-			if let Some(cond) = r.cond {
-				let i = Interval::from(cond);
-				// todo
+	fn from(rules: &Vec<Rule>) -> Vec<Self> {
+		let mut conds: Vec<Condition> = vec![];
+		let mut nodes: Vec<Node> = vec![];
+		for (index, rule) in rules.iter().enumerate() {
+			if let Some(c) = conds.pop() {
+				conds.push(c.opposite());
 			}
+			if let Some(c) = rule.cond {
+				conds.push(c);
+			} 
+			let mut intervals: HashMap<Category, Interval> = HashMap::from([
+				(Category::X, Interval::default()),
+				(Category::M, Interval::default()),
+				(Category::A, Interval::default()),
+				(Category::S, Interval::default())]);
+			for c in conds.iter() {
+				let i = Interval::from(c);
+				intervals
+					.entry(c.cat)
+					.and_modify(|a| *a = a.merge(&i));
+			}
+			nodes.push(Node { intervals: intervals, dest: rule.dest.clone(), index: index });
+		}
+		nodes
+	}
+	fn merge(&mut self, other: &Self) {
+		for (c, i) in self.intervals.iter_mut() {
+			*i = i.merge(other.intervals.get(&c).unwrap());
 		}
 	}
 	fn count(&self) -> u64 {
@@ -137,7 +191,7 @@ type Workflows = HashMap<String, Workflow>;
 
 #[derive(Debug)]
 struct Workflow {
-	rules: Vec<Rule>
+	nodes: Vec<Node>
 }
 
 
@@ -147,7 +201,7 @@ struct Rule {
 	dest: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct Condition {
 	cat: Category,
 	op: char,
