@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use std::collections::HashMap;
 
 fn main() {
-	let lines = read_lines("20b.txt");
+	let lines = read_lines("20.txt");
 	let lines = lines.into_iter()
 			.map(|l| {
 				let mut s = l.split(" -> ").map(String::from);
@@ -34,7 +34,6 @@ fn main() {
 
 
 	for (a, next) in lines.into_iter() {
-		// todo add mem hashmap for each Conjunction
 		let name = if a == "broadcaster" {
 			String::from("broadcaster")
 		} else {
@@ -51,12 +50,62 @@ fn main() {
 		}
 	}
 
-	for (n, m) in modules.iter() {
-		println!("[{}] {:?}", n, m);
+	let mut init_modules: Modules = HashMap::new();
+	for (k, v) in modules.iter() {
+		let m: Module = if let Some(m) = v.as_any().downcast_ref::<FlipFlop>() {
+			Box::new(m.clone())
+		} else if let Some(m) = v.as_any().downcast_ref::<Conjunction>() {
+			Box::new(m.clone())
+		} else if let Some(m) = v.as_any().downcast_ref::<Broadcast>() {
+			Box::new(m.clone())
+		} else { panic!("failed to clone"); };
+		init_modules.insert(k.clone(), m);
 	}
 
 
+
 	let mut pulses: Pulses = VecDeque::new();
+
+	let mut lows = vec![];
+	let mut highs = vec![];
+	let mut count = 0;
+
+	while count < 1000 {
+		push_button(&mut pulses);
+		let (mut low, mut high) = (0, 0);
+
+		while let Some(group) = pulses.pop_front() {
+			// println!("group: {:?}", group);
+			let new: Vec<Vec<Pulsing>> = group.into_iter().map(|pulsing| {
+			match pulsing.2 {
+				Pulse::Low => low += 1,
+				Pulse::High => high += 1
+			}
+			update(&mut modules, pulsing)
+			}).collect();
+			if new.len() > 0 {
+				pulses.append(&mut VecDeque::from(new));
+			}
+		}
+
+		lows.push(low); highs.push(high);
+		count += 1;
+		if same(&modules, &init_modules) { break; }
+		// println!("------------");
+	}
+
+	println!("count: {}", count);
+	// println!("lows: {:?}, highs: {:?}", lows, highs);
+
+	let (q, r) = (1000 / count, 1000 % count);
+	println!("q: {}, r: {}", q, r);
+
+	let (l, h): (usize, usize) = (lows.iter().sum(), highs.iter().sum());
+
+	let (lr, hr): (usize, usize) = (lows[..r].iter().sum(), highs[..r].iter().sum());
+
+	let s = (l * q + lr) * (h * q + hr);
+	println!("s: {}", s);
 }
 
 
@@ -73,23 +122,51 @@ enum State { On, Off }
 trait Modular: std::fmt::Debug {
 	fn as_any(&self) -> &dyn Any;
 	fn as_any_mut(&mut self) -> &mut dyn Any;
-	fn from(next: Next) -> Self where Self: Sized;
+	fn from(next: Next) -> Self where Self:Sized;
 	fn dest(&self) -> &Next;
 	fn run(&mut self, source: String, pulse: Pulse) -> Option<Pulse>;
+	fn same(&self, other: &Self) -> bool where Self: Sized;
 }
 
 type Module = Box<dyn Modular>;
 type Modules = HashMap<String, Module>;
 type Next = Vec<String>;
 
+fn pm(modules: &Modules) {
+	for (n, m) in modules.iter() {
+		println!("[{}] {:?}", n, m);
+	}
+}
+
+fn push_button(pulses: &mut Pulses) {
+	pulses.push_back(vec![(String::from("button"), String::from("broadcaster"), Pulse::Low)]);
+}
+
 fn update(modules: &mut Modules, (source, dest, pulse): Pulsing) -> Vec<Pulsing> {
-	let m = modules.get_mut(&dest).unwrap();
+	if let Some(m) = modules.get_mut(&dest) {
 	if let Some(p) = m.run(source, pulse) {	
 		let next = m.dest().clone();
 		next.into_iter().map(|d| (dest.clone(), d, p)).collect()
 	} else {
 		vec![]
 	}
+	} else {
+		vec![]
+	}
+}
+
+fn same(s: &Modules, o: &Modules) -> bool {
+	s.iter().fold(true, |r, (k, v1)| {
+		r && if let Some(v2) = o.get(k) {
+			if let (Some(m1), Some(m2)) = (v1.as_any().downcast_ref::<FlipFlop>(), v2.as_any().downcast_ref::<FlipFlop>()) {
+			m1.same(m2)
+		} else if let (Some(m1), Some(m2)) = (v1.as_any().downcast_ref::<Conjunction>(), v2.as_any().downcast_ref::<Conjunction>()) {
+			m1.same(m2)
+		} else if let (Some(m1), Some(m2)) = (v1.as_any().downcast_ref::<Broadcast>(), v2.as_any().downcast_ref::<Broadcast>()) {
+			m1.same(m2)
+		} else { false }
+		} else { false }
+	})
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +201,9 @@ impl Modular for FlipFlop {
 			_ => { None }
 		}
 	}
+	fn same(&self, other: &Self) -> bool {
+		self.state == other.state
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +224,15 @@ impl Modular for Conjunction {
 	fn run(&mut self, source: String, pulse: Pulse) -> Option<Pulse> {
 		self.mem.entry(source).and_modify(|p| *p = pulse);
 		Some(if self.mem.values().all(|p| *p == Pulse::High) { Pulse::Low } else { Pulse::High })
+	}
+	fn same(&self, other: &Self) -> bool {
+		self.mem.iter().fold(true, |r, (k, v1)| {
+			r && if let Some(v2) = other.mem.get(k) {
+				v1 == v2
+			} else {
+				false
+			}
+		})
 	}
 }
 
@@ -169,6 +258,9 @@ impl Modular for Broadcast {
 	}
 	fn run(&mut self, _source: String, pulse: Pulse) -> Option<Pulse> {
 		Some(pulse)
+	}
+	fn same(&self, _other: &Self) -> bool {
+		true
 	}
 }
 
